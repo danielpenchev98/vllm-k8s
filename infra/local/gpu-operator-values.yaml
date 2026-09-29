@@ -1,0 +1,31 @@
+# Driver and container toolkit are already on the host; operator pods use the k3s "nvidia" RuntimeClass.
+driver:
+  enabled: false
+toolkit:
+  enabled: false
+
+# The GPU node is tainted workload=gpu-decoder:NoSchedule (see setup-infra.sh), so every operator
+# component that may land on it tolerates that taint. Lists replace the chart defaults, which are kept.
+operator: # also used by the upgrade-crd hook job
+  tolerations:
+    - {key: node-role.kubernetes.io/control-plane, operator: Equal, value: "", effect: NoSchedule}
+    - {key: workload, operator: Equal, value: gpu-decoder, effect: NoSchedule}
+
+daemonsets:
+  tolerations:
+    - {key: nvidia.com/gpu, operator: Exists, effect: NoSchedule}
+    - {key: workload, operator: Equal, value: gpu-decoder, effect: NoSchedule}
+
+node-feature-discovery:
+  master:
+    tolerations:
+      - {key: node-role.kubernetes.io/control-plane, operator: Equal, value: "", effect: NoSchedule}
+      - {key: workload, operator: Equal, value: gpu-decoder, effect: NoSchedule}
+  worker:
+    tolerations:
+      - {key: node-role.kubernetes.io/control-plane, operator: Equal, value: "", effect: NoSchedule}
+      - {key: nvidia.com/gpu, operator: Exists, effect: NoSchedule}
+      - {key: workload, operator: Equal, value: gpu-decoder, effect: NoSchedule}
+  gc:
+    tolerations:
+      - {key: workload, operator: Equal, value: gpu-decoder, effect: NoSchedule}

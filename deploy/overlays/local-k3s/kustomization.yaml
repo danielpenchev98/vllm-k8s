@@ -1,0 +1,26 @@
+namespace: llm
+resources:
+  - ../../base
+components:
+  - ../../components/litellm   # gateway in front of vLLM
+secretGenerator:
+  - name: hf-token
+    envs: [hf.env]
+    # Fixed name: model-download/job.yaml is applied outside this kustomization and can't follow the hash.
+    options: {disableNameSuffixHash: true}
+patches:
+  - target: {kind: PersistentVolumeClaim, name: model-weights}
+    patch: |
+      - op: add
+        path: /spec/storageClassName
+        value: local-path
+  - target: {kind: Deployment, name: vllm}
+    patch: |
+      - op: add
+        path: /spec/template/spec/runtimeClassName
+        value: nvidia
+  - target: {kind: Ingress, name: litellm}
+    patch: |
+      - op: add
+        path: /spec/ingressClassName
+        value: traefik

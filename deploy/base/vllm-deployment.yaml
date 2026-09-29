@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vllm
+  labels: {app: vllm}
+spec:
+  replicas: 1
+  # One GPU: a rolling update would start a 2nd pod that can never get nvidia.com/gpu.
+  # Recreate stops the old pod first (brief downtime), which is the honest choice on 1 GPU.
+  strategy:
+    type: Recreate # single gpu
+  selector:
+    matchLabels: {app: vllm}
+  template:
+    metadata:
+      labels: {app: vllm}
+    spec:
+      nodeSelector:
+        workload: gpu-decoder
+      tolerations:
+        - {key: workload, operator: Equal, value: gpu-decoder, effect: NoSchedule}
+      terminationGracePeriodSeconds: 60        # let in-flight requests finish
+      # No Docker-link-style env vars for Services: the "vllm" Service would inject
+      # VLLM_PORT=tcp://..., which vLLM reads as its own config and crashes on.
+      enableServiceLinks: false
+      containers:
+        - name: vllm
+          image: vllm/vllm-openai:v0.30.0      # entrypoint is already `vllm serve`
+          args: ["--config", "/etc/vllm/config.yaml", "--host", "0.0.0.0", "--port", "8000"]
+          env:
+            - {name: HF_HUB_OFFLINE, value: "1"}   # weights come from the PVC; fail fast instead of downloading
+          ports:                                                                                              
+            - {name: http, containerPort: 8000}
+          resources:
+            requests: {cpu: "4", memory: 32Gi, nvidia.com/gpu: 1}                                 
+            limits:   {cpu: "6", memory: 48Gi, nvidia.com/gpu: 1}                                           
+          startupProbe:                        # covers weight load + profiling + CUDA graphcapture                                                                                           
+            httpGet: {path: /health, port: http}                                                              
+            periodSeconds: 10
+            failureThreshold: 60               # up to 10 min; size from your measured startup time
+          readinessProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 4                # ~1 min of failures before restart; don't kill it under load
+          volumeMounts:
+            - {name: config, mountPath: /etc/vllm, readOnly: true}
+            - {name: models, mountPath: /models, readOnly: true}
+            - {name: shm, mountPath: /dev/shm}
+      volumes:
+        - name: config
+          configMap: {name: vllm-config}       # Kustomize rewrites to vllm-config-<hash>
+        - name: models
+          persistentVolumeClaim: {claimName: model-weights}
+        - name: shm
+          emptyDir: {medium: Memory, sizeLimit: 8Gi}

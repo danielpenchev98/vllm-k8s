@@ -1,0 +1,125 @@
+# ---------------------------------------------------------------
+# Secrets & credentials
+# ---------------------------------------------------------------
+
+# Env files (HF_TOKEN, API keys, etc.). Commit a .env.example instead.
+.env
+.env.*
+*.env
+!.env.example
+!*.env.example
+
+# Hugging Face tokens / cache
+.huggingface/
+hf_token*
+**/token
+*.token
+
+# Kubernetes credentials and plain Secret manifests.
+# Kustomize secretGenerator inputs should live in secrets/ or *.env files.
+kubeconfig*
+*.kubeconfig
+.kube/
+secrets/
+*secret*.yaml
+*secret*.yml
+*-secrets.yaml
+# Encrypted secrets are safe to commit
+!*sealed*.yaml
+!*sealed*.yml
+!*.sops.yaml
+!*.enc.yaml
+
+# Helm values containing real credentials
+values.secret*.yaml
+values.local*.yaml
+*.secrets.yaml
+
+# AWS / EKS
+.aws/
+credentials
+*.pem
+aws-auth*.local.yaml
+
+# Terraform / OpenTofu state (contains secrets in plaintext)
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+!*.example.tfvars
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+.terraform.lock.hcl.bak
+
+# Private keys & certificates
+*.key
+*.p12
+*.pfx
+*.jks
+*.crt
+*.csr
+id_rsa*
+id_ed25519*
+*.gpg
+!*.pub
+
+# Grafana / observability local admin creds
+grafana.ini.local
+*.htpasswd
+
+# ---------------------------------------------------------------
+# Downloaded binaries & installers (install via infra/local/install-deps.sh)
+# ---------------------------------------------------------------
+/kubectl
+/helm
+/k9s
+/get_helm.sh
+*.deb
+*.tgz
+*.tar.gz
+bin/
+
+# Helm dependency charts
+charts/*.tgz
+
+# ---------------------------------------------------------------
+# Python
+# ---------------------------------------------------------------
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+.ipynb_checkpoints/
+
+# ---------------------------------------------------------------
+# Benchmark outputs, models, logs
+# ---------------------------------------------------------------
+bench/results/
+bench/prompts.json
+bench/**/*.json.gz
+*.log
+models/
+*.safetensors
+*.bin
+*.gguf
+
+# ---------------------------------------------------------------
+# Editor / OS
+# ---------------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+.claude/settings.local.json

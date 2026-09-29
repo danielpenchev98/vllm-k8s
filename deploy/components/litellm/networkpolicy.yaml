@@ -1,0 +1,14 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: litellm-vllm-policy
+spec:
+  podSelector:
+    matchLabels: {app: vllm}          # applies to the vLLM pods
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: {app: litellm}   # only LiteLLM pods in this namespace
+      ports:
+        - {port: 8000, protocol: TCP}

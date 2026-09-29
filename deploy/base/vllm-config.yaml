@@ -1,0 +1,25 @@
+# vLLM engine config, passed as `vllm serve --config /etc/vllm/config.yaml`.
+# Keys are `vllm serve` flag names (check `vllm serve --help=all` for the pinned image's version).
+# Omitted key = vLLM default. Container args override this file, which is how experiment
+# components change a single knob.
+
+# --- required ---
+model: /models/qwen3-4b            # path on the model-weights PVC (see model-download/)
+served-model-name: qwen3-4b        # the name clients send as "model"
+
+# --- baseline engine settings ---
+enable-prefix-caching: true
+block-size: 16
+gpu-memory-utilization: 0.92
+max-num-seqs: 8                    # max requests batched together
+seed: 1234
+# max-model-len: 8192              # Qwen3-4B defaults to its full context; pin it for comparable runs
+# max-num-batched-tokens: 2048     # chunked-prefill token budget per step
+
+# --- optional: speculative decoding (off when this block is absent) ---
+# speculative-config:
+#   method: ngram                  # ngram | suffix | draft_model | eagle3 | ...
+#   num_speculative_tokens: 4
+#   prompt_lookup_max: 4           # ngram only
+#   prompt_lookup_min: 2           # ngram only
+#   # model: /models/qwen3-0-6b    # draft_model / eagle3 only

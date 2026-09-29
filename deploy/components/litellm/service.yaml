@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: litellm
+spec:
+  type: ClusterIP            # the default; can be omitted
+  selector:
+    app: litellm                # matches the Deployment's pod labels
+  ports:
+    - name: http
+      port: 4000               # what clients call
+      targetPort: http       # the container port named "http" (4000)

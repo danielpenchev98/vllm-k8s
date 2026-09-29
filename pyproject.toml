@@ -1,0 +1,15 @@
+[project]
+name = "vllm-k8s"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "ninja>=1.13.2",
+    "nvidia-cuda-cccl==13.0.*",
+    "nvidia-cuda-crt==13.0.*",
+    "nvidia-cuda-nvcc==13.0.*",
+    "nvidia-nvvm==13.0.*",
+    "openai>=3.19.2",
+    "vllm>=0.30.0",
+]

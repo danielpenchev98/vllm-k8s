@@ -1,0 +1,30 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: model-download-${MODEL_NAME}
+  namespace: llm
+spec:
+  backoffLimit: 2
+  ttlSecondsAfterFinished: 600          # finished Jobs clean themselves up
+  template:
+    spec:
+      restartPolicy: OnFailure
+      nodeSelector: {workload: gpu-decoder}
+      tolerations:
+        - {key: workload, operator: Equal, value: gpu-decoder, effect: NoSchedule}
+      containers:
+        - name: download
+          image: python:3.12-slim
+          command: ["sh", "-c"]
+          args:
+            - >-
+              pip install --no-cache-dir "huggingface_hub==1.33.0" &&
+              hf download "${MODEL_ID}" --revision "${MODEL_REVISION}" --local-dir "/models/${MODEL_NAME}"
+          env:
+            - name: HF_TOKEN
+              valueFrom: {secretKeyRef: {name: hf-token, key: HF_TOKEN}}
+          volumeMounts:
+            - {name: models, mountPath: /models}
+      volumes:
+        - name: models
+          persistentVolumeClaim: {claimName: model-weights}
