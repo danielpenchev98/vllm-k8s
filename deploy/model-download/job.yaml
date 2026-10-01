@@ -9,7 +9,7 @@ spec:
   template:
     spec:
       restartPolicy: OnFailure
-      nodeSelector: {workload: gpu-decoder}
+      nodeSelector: {workload: gpu-decoder} # we want the model weights to be where they will be used
       tolerations:
         - {key: workload, operator: Equal, value: gpu-decoder, effect: NoSchedule}
       containers:

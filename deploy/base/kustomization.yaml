@@ -1,10 +1,4 @@
+# Shared by every overlay; the workloads themselves are opt-in components (see deploy/components/).
 namespace: llm
 resources:
   - namespace.yaml
-  - pvc.yaml
-  - vllm-deployment.yaml
-  - service.yaml
-configMapGenerator:
-  - name: vllm-config
-    files:
-      - config.yaml=vllm-config.yaml   # mounted as /etc/vllm/config.yaml; name hash rolls the Deployment on change

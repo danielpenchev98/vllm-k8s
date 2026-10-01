@@ -1,0 +1,10 @@
+namespace: monitoring
+generatorOptions:
+  disableNameSuffixHash: true          # stable names: edits update in place, no duplicate dashboards
+  labels:
+    grafana_dashboard: "1"             # what the Grafana sidecar watches for
+configMapGenerator:
+  - name: dashboard-workloads
+    files: [workloads.json]
+  - name: dashboard-vllm
+    files: [vllm.json]

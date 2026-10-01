@@ -2,7 +2,9 @@ namespace: llm
 resources:
   - ../../base
 components:
-  - ../../components/litellm   # gateway in front of vLLM
+  - ../../components/vllm              # model server
+  - ../../components/litellm           # gateway in front of vLLM
+  - ../../components/vllm-monitoring   # ServiceMonitor for vLLM's /metrics
 secretGenerator:
   - name: hf-token
     envs: [hf.env]

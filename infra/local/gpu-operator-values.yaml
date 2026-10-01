@@ -30,3 +30,9 @@ node-feature-discovery:
   gc:
     tolerations:
       - {key: workload, operator: Equal, value: gpu-decoder, effect: NoSchedule}
+
+dcgmExporter:
+  serviceMonitor:
+    enabled: true
+    honorLabels: true       # keep DCGM's pod/namespace (the GPU workload), not the exporter's
+    interval: 15s

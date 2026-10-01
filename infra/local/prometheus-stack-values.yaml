@@ -1,0 +1,45 @@
+prometheusOperator:
+  nodeSelector: {workload: cpu}
+  admissionWebhooks:
+    patch:                      # the pre-install Jobs that create the webhook certs
+      nodeSelector: {workload: cpu}
+
+prometheus:
+  prometheusSpec:
+    nodeSelector: {workload: cpu}
+    retention: 7d
+    resources:
+      requests: {cpu: 200m, memory: 1Gi}
+      limits:   {memory: 2Gi}
+    # Pick up ServiceMonitors/PodMonitors from any release (vLLM, DCGM exporter),
+    # not only ones labeled with this chart's release name.
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+
+alertmanager:
+  alertmanagerSpec:
+    nodeSelector: {workload: cpu}
+
+grafana:
+  nodeSelector: {workload: cpu}
+  ingress:
+    enabled: true
+    ingressClassName: traefik
+    hosts: [grafana.localhost]
+    path: /
+  grafana.ini:
+    server:
+      root_url: http://grafana.localhost:8080   # used for redirects/links; must match how you reach it
+
+kube-state-metrics:
+  nodeSelector: {workload: cpu}
+
+# Deliberately no nodeSelector: you want host metrics from the GPU node to
+# The chart's default tolerations already let it past the workload=gpu-dec
+prometheus-node-exporter: {}
+
+# kind: these listen on 127.0.0.1 inside the node, so the targets would always be down.
+kubeControllerManager: {enabled: false}
+kubeScheduler: {enabled: false}
+kubeEtcd: {enabled: false}
+kubeProxy: {enabled: false}

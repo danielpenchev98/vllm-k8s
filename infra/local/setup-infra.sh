@@ -6,6 +6,7 @@
 #   - NVIDIA GPU Operator (driver + toolkit come from the host/nvkind, not the operator)
 #   - nvidia-smi test pod requesting nvidia.com/gpu: 1
 #   - traefik ingress controller on a NodePort mapped to ${INGRESS_ADDR}
+#   - descheduler evicting pods that failed admission (GPU not yet re-registered after a restart)
 # Safe to re-run: an existing cluster is reused, helm releases are upgraded.
 set -euo pipefail
 
@@ -124,6 +125,31 @@ install_traefik() {
   echo "    HTTP ${code}"
 }
 
+install_descheduler() {
+  log "descheduler ${DESCHEDULER_VERSION}"
+  helm repo add descheduler https://kubernetes-sigs.github.io/descheduler/ --force-update
+  helm repo update descheduler
+  helm upgrade --install descheduler descheduler/descheduler \
+    -n kube-system \
+    --version "${DESCHEDULER_VERSION}" \
+    -f "${SCRIPT_DIR}/descheduler-values.yaml" \
+    --wait --timeout 5m
+}
+
+install_prometheus_stack() {
+  log "prometheus-stack ${PROMETHEUS_STACK_VERSION}"
+  helm repo add prometheus-community https://prometheus-community.github.io/helm-charts --force-update
+  helm repo update prometheus-community
+  helm upgrade --install kps oci://ghcr.io/prometheus-community/charts/kube-prometheus-stack \
+    -n monitoring --create-namespace \
+    --version "${PROMETHEUS_STACK_VERSION}" \
+    -f "${SCRIPT_DIR}/prometheus-stack-values.yaml" \
+    --wait --timeout 10m
+
+  log "Grafana dashboards"
+  kubectl apply -k "${SCRIPT_DIR}/../../observability/dashboards"
+}
+
 main() {
   preflight
   create_cluster
@@ -132,6 +158,8 @@ main() {
   install_gpu_operator
   test_gpu_pod
   install_traefik
+  install_descheduler
+  install_prometheus_stack
   log "Cluster ready. Next: deploy/deploy.sh deploy/overlays/local-kind"
 }
 

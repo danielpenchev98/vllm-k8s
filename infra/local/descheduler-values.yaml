@@ -1,0 +1,23 @@
+# Evicts pods stuck in Failed/UnexpectedAdmissionError: after a node restart the kubelet re-admits
+# pods before the device plugin re-registers the GPU, so GPU pods fail admission.
+# Pods in phase Unknown are not covered.
+kind: Deployment            # run continuously (default is CronJob)
+deschedulingInterval: 1m
+
+deschedulerPolicyAPIVersion: "descheduler/v1alpha2"
+deschedulerPolicy:
+  profiles:
+    - name: cleanup-failed
+      pluginConfig:
+        - name: DefaultEvictor
+          args:
+            evictLocalStoragePods: true     # vLLM usually has an emptyDir for /dev/shm
+        - name: RemoveFailedPods
+          args:
+            reasons: ["UnexpectedAdmissionError"]
+            includingInitContainers: true
+            minPodLifetimeSeconds: 120
+      plugins:
+        deschedule:
+          enabled:
+            - RemoveFailedPods

@@ -1,0 +1,7 @@
+# Needs the Prometheus Operator CRDs (kube-prometheus-stack); kept out of components/vllm so vLLM
+# still deploys on clusters without them.
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+resources:
+  - servicemonitor.yaml
+  - networkpolicy.yaml

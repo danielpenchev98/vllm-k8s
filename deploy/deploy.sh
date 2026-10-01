@@ -6,14 +6,14 @@
 #   4. everything else: vLLM, LiteLLM, Services, Ingress, NetworkPolicy
 #   5. waits for the rollouts and sends one chat request through the Ingress
 # Usage: deploy/deploy.sh [kustomize-dir]        (default: deploy/overlays/local-k3s)
-# Env:   MODEL_ID        HF repo matching `model:` in base/vllm-config.yaml (default Qwen/Qwen3-4B)
+# Env:   MODEL_ID        HF repo matching `model:` in components/vllm/vllm-config.yaml (default Qwen/Qwen3-4B)
 #        MODEL_REVISION  commit SHA to pin (default main)
 #        SKIP_DOWNLOAD=1 skip step 3
 # Safe to re-run.
 set -euo pipefail
 
 DEPLOY_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TARGET="${1:-${DEPLOY_DIR}/overlays/local-k3s}"
+TARGET="${1:-${DEPLOY_DIR}/overlays/local-kind}"
 NAMESPACE=llm
 MODEL_ID="${MODEL_ID:-Qwen/Qwen3-4B}"
 MODEL_REVISION="${MODEL_REVISION:-main}"
@@ -21,8 +21,8 @@ SKIP_DOWNLOAD="${SKIP_DOWNLOAD:-0}"
 
 log() { printf '\n==> %s\n' "$*"; }
 die() { printf '\nERROR: %s\n' "$*" >&2; exit 1; }
-# Top-level value from base/vllm-config.yaml, e.g. `config_value model` -> /models/qwen3-4b
-config_value() { awk -v k="$1:" '$1 == k {print $2; exit}' "${DEPLOY_DIR}/base/vllm-config.yaml"; }
+# Top-level value from components/vllm/vllm-config.yaml, e.g. `config_value model` -> /models/qwen3-4b
+config_value() { awk -v k="$1:" '$1 == k {print $2; exit}' "${DEPLOY_DIR}/components/vllm/vllm-config.yaml"; }
 
 preflight() {
   log "Preflight"
@@ -40,7 +40,7 @@ preflight() {
   local model_name
   model_name="$(basename "${MODEL_ID}" | tr '[:upper:].' '[:lower:]-')"
   [[ "$(config_value model)" == "/models/${model_name}" ]] \
-    || die "MODEL_ID=${MODEL_ID} downloads to /models/${model_name}, but base/vllm-config.yaml has model: $(config_value model)"
+    || die "MODEL_ID=${MODEL_ID} downloads to /models/${model_name}, but components/vllm/vllm-config.yaml has model: $(config_value model)"
 }
 
 apply_prerequisites() {
