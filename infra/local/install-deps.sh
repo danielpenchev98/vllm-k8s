@@ -1,17 +1,27 @@
 #!/usr/bin/env bash
-# Installs local dependencies for running vLLM on k8s with an NVIDIA GPU:
-#   - NVIDIA Container Toolkit (+ registers the nvidia runtime with Docker)
-#   - kubectl, helm, k9s, uv
-#   - k3s server (cluster setup lives in setup-infra.sh)
+# Installs local dependencies for running vLLM on a kind cluster with an NVIDIA GPU:
+#   - NVIDIA Container Toolkit, set up as Docker's default runtime for nvkind
+#   - kind, nvkind, kubectl, helm, k9s, uv
+# Needs Docker Engine and Go already installed. Cluster setup lives in setup-infra.sh.
 # Safe to re-run: tools already present are skipped.
 set -euo pipefail
 
 NVIDIA_CONTAINER_TOOLKIT_VERSION="${NVIDIA_CONTAINER_TOOLKIT_VERSION:-1.20.1-1}"
 ARCH="amd64"
-K3S_VERSION="${K3S_VERSION:-v1.36.4+k3s1}"
+KIND_VERSION="${KIND_VERSION:-v0.33.0}"
+# nvkind has no release tags; pin the commit (go.mod pseudo-version v0.0.0-20260630043359-c57050497cff).
+NVKIND_VERSION="${NVKIND_VERSION:-c57050497cff}"
 
 log() { printf '\n==> %s\n' "$*"; }
+die() { printf '\nERROR: %s\n' "$*" >&2; exit 1; }
 have() { command -v "$1" >/dev/null 2>&1; }
+
+check_prerequisites() {
+  log "Checking prerequisites"
+  have docker || die "Docker Engine not found: install it from Docker's apt repo (not the snap)"
+  docker info >/dev/null 2>&1 || die "can't talk to Docker: add yourself to the docker group and log in again"
+  have go || die "Go not found: nvkind is installed with 'go install' (needs go >= 1.24, older go auto-switches)"
+}
 
 install_nvidia_container_toolkit() {
   log "NVIDIA Container Toolkit ${NVIDIA_CONTAINER_TOOLKIT_VERSION}"
@@ -35,8 +45,11 @@ install_nvidia_container_toolkit() {
     libnvidia-container-tools="${NVIDIA_CONTAINER_TOOLKIT_VERSION}" \
     libnvidia-container1="${NVIDIA_CONTAINER_TOOLKIT_VERSION}"
 
-  log "Registering nvidia runtime with Docker"
-  sudo nvidia-ctk runtime configure --runtime=docker
+  # kind node containers can't ask for GPUs with --gpus, so nvkind relies on the nvidia runtime
+  # being Docker's default and picking up GPUs from /var/run/nvidia-container-devices mounts.
+  log "nvidia as Docker's default runtime, GPUs requestable via volume mounts"
+  sudo nvidia-ctk runtime configure --runtime=docker --set-as-default
+  sudo nvidia-ctk config --set accept-nvidia-visible-devices-as-volume-mounts=true --in-place
   sudo systemctl restart docker
 }
 
@@ -77,25 +90,28 @@ install_uv() {
   curl -LsSf https://astral.sh/uv/install.sh | sh
 }
 
-install_k3s() {
-  if have k3s; then log "k3s already installed, skipping"; return; fi
-  log "k3s ${K3S_VERSION}"
-  # Installed after the NVIDIA Container Toolkit so k3s's containerd auto-detects the nvidia runtime.
-  curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="${K3S_VERSION}" sh -
-
-  if [[ -f "${HOME}/.kube/config" ]]; then
-    log "~/.kube/config already exists, leaving it alone (k3s config: /etc/rancher/k3s/k3s.yaml)"
-  else
-    log "Writing kubeconfig to ~/.kube/config"
-    mkdir -p "${HOME}/.kube"
-    sudo install -o "$(id -u)" -g "$(id -g)" -m 0600 /etc/rancher/k3s/k3s.yaml "${HOME}/.kube/config"
-  fi
+install_kind() {
+  if have kind; then log "kind already installed, skipping"; return; fi
+  log "kind ${KIND_VERSION}"
+  local tmp url
+  tmp="$(mktemp -d)"
+  url="https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-linux-${ARCH}"
+  curl -fsSL -o "${tmp}/kind" "${url}"
+  curl -fsSL -o "${tmp}/kind.sha256sum" "${url}.sha256sum"
+  echo "$(cut -d' ' -f1 "${tmp}/kind.sha256sum")  ${tmp}/kind" | sha256sum --check
+  sudo install -o root -g root -m 0755 "${tmp}/kind" /usr/local/bin/kind
+  rm -rf "${tmp}"
 }
 
-
-install_multipass() {
-  if ! have snap; then log "snap not installed, skipping multipass"; return; fi
-  sudo snap install multipass
+install_nvkind() {
+  local bin
+  bin="$(go env GOPATH)/bin/nvkind"
+  if [[ -x "${bin}" ]]; then log "nvkind already installed, skipping"; return; fi
+  log "nvkind @${NVKIND_VERSION}"
+  go install "github.com/NVIDIA/nvkind/cmd/nvkind@${NVKIND_VERSION}"
+  if ! have nvkind; then
+    log "nvkind is in $(go env GOPATH)/bin, which isn't on PATH (the infra scripts add it themselves)"
+  fi
 }
 
 verify() {
@@ -105,19 +121,21 @@ verify() {
   helm version --short
   k9s version --short
   uv --version
-  k3s --version | head -1
-  kubectl get nodes
+  kind version
+  "$(go env GOPATH)/bin/nvkind" --help >/dev/null && echo "nvkind ok"
+  docker info --format 'Docker default runtime: {{.DefaultRuntime}}'
   docker run --rm --gpus all nvidia/cuda:13.0.1-base-ubuntu24.04 nvidia-smi -L
-  multipass version
 }
 
 main() {
+  check_prerequisites
   install_nvidia_container_toolkit
   install_kubectl
   install_helm
   install_k9s
   install_uv
-  install_k3s
+  install_kind
+  install_nvkind
   verify
 }
 

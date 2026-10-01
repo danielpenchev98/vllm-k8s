@@ -1,0 +1,11 @@
+# traefik chart overrides for the kind cluster; everything else keeps the chart defaults.
+service:
+  spec:
+    type: NodePort
+ports:
+  web:
+    nodePort: 30080     # must match containerPort in kind-config.yaml extraPortMappings
+nodeSelector:
+  workload: cpu
+ingressClass:
+  name: traefik         # matches ingressClassName in deploy/overlays/local-kind

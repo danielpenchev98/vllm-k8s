@@ -1,0 +1,60 @@
+# Copyright 2024 NVIDIA CORPORATION.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# kind cluster for setup-infra.sh, rendered by nvkind (Go template: numGPUs = host GPUs).
+# system-reserved = host total (16 CPU, ~62Gi) - the node's cgroup limits in common.sh, so the
+# kubelet's allocatable matches what the container can actually use.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+- role: control-plane
+  labels:
+    workload: cpu
+    # kind nodes share the host's /sys, so NFD finds the GPU here too; keep GPU Operator pods off.
+    nvidia.com/gpu.deploy.operands: "false"
+  kubeadmConfigPatches:
+  # The first control plane is created with kubeadm's InitConfiguration (workers use JoinConfiguration).
+  - |
+    kind: InitConfiguration
+    nodeRegistration:
+      taints: []
+      kubeletExtraArgs:
+        system-reserved: "cpu=12,memory=54Gi"
+  extraPortMappings:
+  - containerPort: 30080   # traefik web NodePort (traefik-values.yaml)
+    hostPort: 8080
+    listenAddress: 127.0.0.1
+{{- range $gpu := until numGPUs }}
+- role: worker
+  labels:
+    nvidia.com/gpu.present: "true"
+    workload: gpu-decoder
+  kubeadmConfigPatches:
+  - |
+    kind: JoinConfiguration
+    nodeRegistration:
+      taints:
+        - {key: workload, value: gpu-decoder, effect: NoSchedule}
+      kubeletExtraArgs:
+        system-reserved: "cpu=4,memory=14Gi"
+  extraMounts:
+    # We inject all NVIDIA GPUs using the nvidia-container-runtime.
+    # This requires `accept-nvidia-visible-devices-as-volume-mounts = true` be set
+    # in `/etc/nvidia-container-runtime/config.toml`
+    - hostPath: /dev/null
+      containerPath: /var/run/nvidia-container-devices/{{ $gpu }}
+    # PVC data outlives the cluster (STORAGE_DIR in common.sh).
+    - hostPath: /home/kind/storage
+      containerPath: /var/local-path-provisioner
+{{- end }}

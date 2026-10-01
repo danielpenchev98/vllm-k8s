@@ -1,51 +1,65 @@
 #!/usr/bin/env bash
-# Sets up the local k3s cluster (run after install-deps.sh):
-#   - ufw allowlist for k3s on the host
-#   - checks k3s's containerd picked up the host's nvidia runtime
-#   - host labeled + tainted workload=gpu-decoder, VM labeled workload=cpu
-#   - NVIDIA GPU Operator (driver + toolkit come from the host, not the operator)
+# Sets up the local kind cluster (run after install-deps.sh):
+#   - kind cluster via nvkind from kind-config.yaml: control plane labeled workload=cpu,
+#     GPU worker labeled + tainted workload=gpu-decoder with the host's GPU injected
+#   - cgroup limits (cpuset + memory) on the node containers
+#   - NVIDIA GPU Operator (driver + toolkit come from the host/nvkind, not the operator)
 #   - nvidia-smi test pod requesting nvidia.com/gpu: 1
-#   - multipass VM joined as a CPU-only k3s agent
-# Safe to re-run: existing resources are reused.
+#   - traefik ingress controller on a NodePort mapped to ${INGRESS_ADDR}
+# Safe to re-run: an existing cluster is reused, helm releases are upgraded.
 set -euo pipefail
 
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
-configure_firewall() {
-  if ! have ufw; then log "ufw not installed, skipping firewall allowlist"; return; fi
-  log "ufw allowlist for k3s"
-  local port
-  for port in ${K3S_ALLOWED_PORTS}; do
-    sudo ufw allow "${port}" comment 'k3s'
+preflight() {
+  log "Preflight"
+  local tool
+  for tool in docker kind nvkind kubectl helm; do
+    have "${tool}" || die "${tool} not found (run install-deps.sh)"
   done
-  sudo ufw allow from "${K3S_POD_CIDR}" to any comment 'k3s pods'
-  sudo ufw allow from "${K3S_SERVICE_CIDR}" to any comment 'k3s services'
-  if ! sudo ufw status | grep -q '^Status: active'; then
-    log "ufw is inactive: rules are saved but not enforced (enable with 'sudo ufw enable', allow SSH first if remote)"
-  fi
+  [[ "$(docker info --format '{{.DefaultRuntime}}')" == nvidia ]] \
+    || die "Docker's default runtime isn't nvidia; nvkind needs it (run install-deps.sh)"
+  # Created by root here so the bind mount doesn't make Docker create it on the fly.
+  [[ -d "${STORAGE_DIR}" ]] || sudo mkdir -p "${STORAGE_DIR}"
 }
 
-check_nvidia_runtime() {
-  log "Checking k3s containerd has the nvidia runtime"
-  local config=/var/lib/rancher/k3s/agent/etc/containerd/config.toml
-  if ! sudo grep -q nvidia-container-runtime "${config}"; then
-    # k3s only detects the runtime at startup, e.g. if it was installed before the toolkit.
-    log "nvidia runtime missing, restarting k3s"
-    sudo systemctl restart k3s
-    sudo grep -q nvidia-container-runtime "${config}" \
-      || { echo "nvidia runtime still not in ${config}" >&2; exit 1; }
+create_cluster() {
+  if cluster_exists; then
+    log "Cluster ${CLUSTER_NAME} already exists, skipping"
+  else
+    log "kind cluster ${CLUSTER_NAME}"
+    nvkind cluster create --name "${CLUSTER_NAME}" --config-template "${SCRIPT_DIR}/kind-config.yaml"
   fi
-  sudo grep -n nvidia-container-runtime "${config}"
-  kubectl wait --for=create runtimeclass/nvidia --timeout=60s
+  kubectl config use-context "kind-${CLUSTER_NAME}"
+  kubectl wait node --all --for=condition=Ready --timeout=5m
 }
 
-label_gpu_node() {
-  local node
-  node="$(gpu_node)"
-  log "Labeling + tainting ${node} workload=gpu-decoder"
-  kubectl label node "${node}" workload=gpu-decoder --overwrite
-  # Must match the tolerations in gpu-operator-values.yaml.
-  kubectl taint nodes "${node}" workload=gpu-decoder:NoSchedule --overwrite
+limit_node_resources() {
+  local cpu gpu
+  cpu="$(cpu_node)"
+  gpu="$(gpu_node)"
+  log "cgroup limits: ${cpu} cpuset=${CPU_NODE_CPUSET} mem=${CPU_NODE_MEMORY}, ${gpu} cpuset=${GPU_NODE_CPUSET} mem=${GPU_NODE_MEMORY}"
+  # --memory-swap = --memory: a hard ceiling, no swapping on top of it.
+  docker update --cpuset-cpus "${CPU_NODE_CPUSET}" --memory "${CPU_NODE_MEMORY}" --memory-swap "${CPU_NODE_MEMORY}" "${cpu}"
+  docker update --cpuset-cpus "${GPU_NODE_CPUSET}" --memory "${GPU_NODE_MEMORY}" --memory-swap "${GPU_NODE_MEMORY}" "${gpu}"
+}
+
+check_nodes() {
+  local cpu node cpus allocatable
+  cpu="$(cpu_node)"
+  log "Checking node layout"
+  # The control plane doubles as the CPU node; kind may keep its default taint despite `taints: []`.
+  kubectl taint node "${cpu}" node-role.kubernetes.io/control-plane:NoSchedule- 2>/dev/null || true
+  for node in "${cpu}" "$(gpu_node)"; do
+    # nproc respects the cpuset; the kubelet doesn't, it only knows system-reserved.
+    cpus="$(docker exec "${node}" nproc)"
+    allocatable="$(kubectl get node "${node}" -o jsonpath='{.status.allocatable.cpu}')"
+    if [[ "${allocatable}" != "${cpus}" ]]; then
+      log "WARNING: ${node} has ${cpus} CPUs but allocatable cpu=${allocatable}; fix system-reserved in kind-config.yaml"
+    fi
+  done
+  kubectl get nodes -L workload -o wide
+  kubectl get nodes -o custom-columns='NAME:.metadata.name,TAINTS:.spec.taints[*].key,CPU:.status.allocatable.cpu,MEMORY:.status.allocatable.memory'
 }
 
 install_gpu_operator() {
@@ -60,6 +74,7 @@ install_gpu_operator() {
 
   log "Waiting for the GPU node to advertise nvidia.com/gpu"
   kubectl wait "node/$(gpu_node)" --for=jsonpath='{.status.allocatable.nvidia\.com/gpu}'=1 --timeout=5m
+  kubectl wait --for=create runtimeclass/nvidia --timeout=60s
 }
 
 test_gpu_pod() {
@@ -72,7 +87,7 @@ metadata:
   name: nvidia-smi
 spec:
   restartPolicy: Never
-  # k3s defaults to runc; without this the pod gets scheduled but can't see the GPU.
+  # Without this the pod gets scheduled but runs under runc and can't see the GPU.
   runtimeClassName: nvidia
   nodeSelector:
     workload: gpu-decoder
@@ -91,37 +106,33 @@ EOF
   kubectl delete pod nvidia-smi
 }
 
-launch_agent_vm() {
-  if multipass info "${AGENT_NAME}" >/dev/null 2>&1; then log "VM ${AGENT_NAME} already exists, skipping"; return; fi
-  log "multipass VM ${AGENT_NAME}"
-  multipass launch "${AGENT_IMAGE}" --name "${AGENT_NAME}" --cpus 2 --memory 8G --disk 30G
-}
+install_traefik() {
+  log "traefik ${TRAEFIK_VERSION}"
+  helm repo add traefik https://traefik.github.io/charts --force-update
+  helm repo update traefik
+  helm upgrade --install traefik traefik/traefik \
+    -n traefik --create-namespace \
+    --version "${TRAEFIK_VERSION}" \
+    -f "${SCRIPT_DIR}/traefik-values.yaml" \
+    --wait --timeout 5m
 
-join_agent() {
-  if kubectl get node "${AGENT_NAME}" >/dev/null 2>&1; then log "${AGENT_NAME} already joined, skipping"; return; fi
-  log "Joining ${AGENT_NAME} as a CPU-only k3s agent"
-  local token host_ip version
-  token="$(sudo cat /var/lib/rancher/k3s/server/node-token)"
-  # The VM's default gateway is the host's IP on the multipass bridge.
-  host_ip="$(multipass exec "${AGENT_NAME}" -- ip route | awk '/default/ {print $3}')"
-  version="$(k3s --version | awk 'NR==1 {print $3}')"
-  multipass exec "${AGENT_NAME}" -- bash -c \
-    "curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION='${version}' K3S_URL='https://${host_ip}:6443' K3S_TOKEN='${token}' sh -"
-
-  kubectl wait --for=create "node/${AGENT_NAME}" --timeout=2m
-  kubectl wait "node/${AGENT_NAME}" --for=condition=Ready --timeout=5m
-  kubectl label node "${AGENT_NAME}" workload=cpu --overwrite
+  # Any HTTP status proves the port mapping -> NodePort -> traefik path (404 until deploy.sh adds routes).
+  log "Checking traefik answers on ${INGRESS_ADDR}"
+  local code
+  code="$(curl -s -o /dev/null -w '%{http_code}' -m 10 "http://${INGRESS_ADDR}/" || true)"
+  [[ "${code}" != 000 ]] || die "nothing answers on http://${INGRESS_ADDR}/ (kind-config.yaml extraPortMappings?)"
+  echo "    HTTP ${code}"
 }
 
 main() {
-  configure_firewall
-  check_nvidia_runtime
-  label_gpu_node
+  preflight
+  create_cluster
+  limit_node_resources
+  check_nodes
   install_gpu_operator
   test_gpu_pod
-  launch_agent_vm
-  join_agent
-  kubectl get nodes -o wide
+  install_traefik
+  log "Cluster ready. Next: deploy/deploy.sh deploy/overlays/local-kind"
 }
 
 main "$@"

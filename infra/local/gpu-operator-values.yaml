@@ -1,10 +1,11 @@
-# Driver and container toolkit are already on the host; operator pods use the k3s "nvidia" RuntimeClass.
+# Driver is on the host and nvkind sets up the container toolkit inside the GPU node, so the operator
+# deploys neither; its pods use the "nvidia" RuntimeClass.
 driver:
   enabled: false
 toolkit:
   enabled: false
 
-# The GPU node is tainted workload=gpu-decoder:NoSchedule (see setup-infra.sh), so every operator
+# The GPU node is tainted workload=gpu-decoder:NoSchedule (see kind-config.yaml), so every operator
 # component that may land on it tolerates that taint. Lists replace the chart defaults, which are kept.
 operator: # also used by the upgrade-crd hook job
   tolerations:
