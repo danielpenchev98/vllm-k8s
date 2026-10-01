@@ -15,6 +15,7 @@ prometheus:
     # not only ones labeled with this chart's release name.
     serviceMonitorSelectorNilUsesHelmValues: false
     podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false      # same for PrometheusRules (observability/alerts)
 
 alertmanager:
   alertmanagerSpec:

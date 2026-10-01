@@ -1,0 +1,20 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: vllm
+spec:
+  groups:
+    - name: vllm
+      rules:
+        # Fires when any request finished in more than 60s during the last 5m (clears 5m later).
+        # Histogram counts minus the 60s bucket = requests slower than 60s. vLLM's bucket label is
+        # "60.0" (le is matched as a string), so le="60" would never match.
+        - alert: VLLMSlowRequests
+          expr: |
+            sum by (pod) (increase(vllm:e2e_request_latency_seconds_count[5m]))
+              -
+            sum by (pod) (increase(vllm:e2e_request_latency_seconds_bucket{le="60.0"}[5m]))
+              > 0
+          labels: {severity: warning}
+          annotations:
+            summary: "{{ $value | humanize }} request(s) on {{ $labels.pod }} took more than 60s in the last 5m"

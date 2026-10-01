@@ -146,8 +146,8 @@ install_prometheus_stack() {
     -f "${SCRIPT_DIR}/prometheus-stack-values.yaml" \
     --wait --timeout 10m
 
-  log "Grafana dashboards"
-  kubectl apply -k "${SCRIPT_DIR}/../../observability/dashboards"
+  log "Grafana dashboards + alert rules"
+  kubectl apply -k "${SCRIPT_DIR}/../../observability"
 }
 
 main() {

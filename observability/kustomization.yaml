@@ -1,0 +1,4 @@
+# Everything observability: `kubectl apply -k observability` (setup-infra.sh does this after kube-prometheus-stack).
+resources:
+  - dashboards
+  - alerts
