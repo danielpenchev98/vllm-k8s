@@ -63,7 +63,7 @@ apply_stack() {
   local deploy
   for deploy in $(kubectl -n "${NAMESPACE}" get deploy -o name); do
     # vLLM's first start pulls a ~22 GB image, hence the long timeout.
-    kubectl -n "${NAMESPACE}" rollout status "${deploy}" --timeout=20m
+    kubectl -n "${NAMESPACE}" rollout status "${deploy}" --timeout=40m
   done
 }
 
