@@ -13,6 +13,9 @@ block-size: 16
 gpu-memory-utilization: 0.92
 max-num-seqs: 8                    # max requests batched together
 seed: 1234
+enable-auto-tool-choice: true
+tool-call-parser: hermes
+reasoning-parser: qwen3
 # max-model-len: 8192              # Qwen3-4B defaults to its full context; pin it for comparable runs
 # max-num-batched-tokens: 2048     # chunked-prefill token budget per step
 

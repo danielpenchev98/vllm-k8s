@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Undoes setup-infra.sh by deleting the kind cluster: its node containers and everything in it
 # (GPU Operator, traefik, workloads, the nodes' image caches) plus its kubeconfig entry.
-# Kept: install-deps.sh tools, Docker's nvidia runtime config, and PVC data in ${STORAGE_DIR}
-# (a new cluster's PVCs get new pvc-<uid> folders; delete old ones by hand).
+# Kept: install-deps.sh tools, Docker's nvidia runtime config, and PVC data in ${STORAGE_DIR}.
+# The model weights use a fixed folder (model-weights/, see deploy/overlays/local-kind) that the
+# next cluster reuses; dynamic PVCs get new pvc-<uid> folders, delete old ones by hand.
 # Safe to re-run: a missing cluster is skipped. Rebuild with setup-infra.sh.
 set -euo pipefail
 

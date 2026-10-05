@@ -1,15 +1,15 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: litellm
+  name: open-webui
 spec:
   rules:
-    - host: api.localhost
+    - host: chat.localhost
       http:
         paths:
           - path: /
             pathType: Prefix
             backend:
               service:
-                name: litellm
+                name: open-webui
                 port: {name: http}
