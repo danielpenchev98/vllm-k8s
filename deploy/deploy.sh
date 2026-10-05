@@ -47,7 +47,7 @@ apply_prerequisites() {
   log "Namespace, secrets and model PVC"
   # Only these kinds from the rendered overlay, so vLLM doesn't start before its weights exist.
   kubectl kustomize "${TARGET}" \
-    | awk 'BEGIN {RS = "\n---\n"; ORS = "\n---\n"} /(^|\n)kind: (Namespace|Secret|PersistentVolumeClaim)\n/' \
+    | awk 'BEGIN {RS = "\n---\n"; ORS = "\n---\n"} /(^|\n)kind: (Namespace|Secret|PersistentVolume|PersistentVolumeClaim)\n/' \
     | kubectl apply -f -
 }
 
@@ -72,7 +72,7 @@ smoke_test() {
   local hosts="" host model i
   # traefik (ServiceLB) listens on every node IP; the order of this list is arbitrary.
   for i in $(seq 30); do
-    hosts="127.0.0.1:8080"
+    hosts="api.localhost:8080"
     [[ -n "${hosts}" ]] && break
     sleep 2
   done

@@ -1,5 +1,5 @@
 model_list:
-  - model_name: "*"                          # what clients send
+  - model_name: "qwen3-4b"                          # what clients send
     litellm_params:
-      model: hosted_vllm/*                 # vLLM's served-model-name
-      api_base: http://vllm.llm.svc.cluster.local/v1
+      model: hosted_vllm/qwen3-4b                 # vLLM's served-model-name
+      api_base: http://vllm/v1

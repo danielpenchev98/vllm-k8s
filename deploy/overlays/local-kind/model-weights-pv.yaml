@@ -1,0 +1,24 @@
+# Pre-created PV for the model weights, so they live in a fixed host folder and survive
+# teardown-infra.sh. Dynamic local-path PVs get a new pvc-<uid> folder per cluster, which
+# meant a fresh download after every rebuild.
+# Host: /home/kind/storage/model-weights (STORAGE_DIR in infra/local/common.sh), mounted into
+# the GPU node at /var/local-path-provisioner by kind-config.yaml.
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: model-weights
+spec:
+  capacity:
+    storage: 50Gi                       # matches the PVC request in components/vllm/pvc.yaml
+  accessModes: [ReadWriteOnce]
+  persistentVolumeReclaimPolicy: Retain # deleting the PVC never deletes the weights
+  storageClassName: ""                  # static: the local-path provisioner leaves it alone
+  claimRef: {namespace: llm, name: model-weights}   # reserved for this PVC only
+  hostPath:
+    path: /var/local-path-provisioner/model-weights
+    type: DirectoryOrCreate
+  nodeAffinity:                         # the folder only exists on the GPU node
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - {key: workload, operator: In, values: [gpu-decoder]}
