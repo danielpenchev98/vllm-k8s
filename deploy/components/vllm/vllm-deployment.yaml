@@ -5,6 +5,7 @@ metadata:
   labels: {app: vllm}
 spec:
   replicas: 1
+  progressDeadlineSeconds: 2100
   # One GPU: a rolling update would start a 2nd pod that can never get nvidia.com/gpu.
   # Recreate stops the old pod first (brief downtime), which is the honest choice on 1 GPU.
   strategy:
