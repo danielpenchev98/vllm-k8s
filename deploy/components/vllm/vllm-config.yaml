@@ -19,6 +19,9 @@ reasoning-parser: qwen3
 # max-model-len: 8192              # Qwen3-4B defaults to its full context; pin it for comparable runs
 # max-num-batched-tokens: 2048     # chunked-prefill token budget per step
 
+# --- metrics ---
+enable-mfu-metrics: true           # vllm:estimated_{flops,read_bytes}_per_gpu_total, for MFU / MBU
+
 # --- optional: speculative decoding (off when this block is absent) ---
 # speculative-config:
 #   method: ngram                  # ngram | suffix | draft_model | eagle3 | ...

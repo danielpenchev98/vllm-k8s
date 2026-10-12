@@ -1,0 +1,4 @@
+# An experiment lists only the `vllm serve` keys that differ from the committed config,
+# deploy/components/vllm/vllm-config.yaml (`key: null` drops a key from it). run.sh merges the two.
+# The baseline changes nothing: the committed config as is.
+{}

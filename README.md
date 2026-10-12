@@ -145,7 +145,7 @@ deploy/                       the LLM stack (kustomize)
 observability/
   dashboards/                 Grafana dashboards as code (ConfigMaps via kustomize)
   alerts/                     PrometheusRules
-bench/                        load test of the deployed stack through LiteLLM (run.sh <label>)
+bench/                        vLLM config experiments: run.sh redeploys vLLM per experiment, load-tests through LiteLLM
 docs/                         architecture diagram, notes, todo
 ```
 

@@ -1,0 +1,2 @@
+# Twice the running-request cap of the committed config (8). Everything else as committed.
+max-num-seqs: 16

@@ -2,7 +2,7 @@
 
 Sends a seeded random sample of prompts.json (with the long system prompt) at Poisson-distributed
 arrival times through LiteLLM, streams the responses, and records TTFT, inter-token latency and
-throughput. run.sh wraps it for the deployed stack.
+throughput. run.sh deploys an experiment's vLLM config first, then runs this.
 
     python vllm_bench.py --label chunked-2048 --out results/chunked-2048.json
     python vllm_bench.py --summarize results/*.json
