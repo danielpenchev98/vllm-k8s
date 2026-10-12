@@ -2,7 +2,7 @@
 
 Sends a seeded random sample of prompts.json (with the long system prompt) at Poisson-distributed
 arrival times through LiteLLM, streams the responses, and records TTFT, inter-token latency and
-throughput. sweep.sh runs it once per vLLM config.
+throughput. run.sh wraps it for the deployed stack.
 
     python vllm_bench.py --label chunked-2048 --out results/chunked-2048.json
     python vllm_bench.py --summarize results/*.json
@@ -137,7 +137,7 @@ def summarize(paths):
             "num_errors", "preemptions"]
     print(f"{'config':<16}" + "".join(f"{c:>14}" for c in cols))
     for r in rows:
-        # preemptions is added by sweep.sh from vLLM's /metrics; missing (nan) for standalone runs.
+        # preemptions is added by run.sh from vLLM's /metrics; missing (nan) for standalone runs.
         print(f"{r['label']:<16}" + "".join(f"{float(r.get(c, 'nan')):>14.1f}" for c in cols))
 
 
