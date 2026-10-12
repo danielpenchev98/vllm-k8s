@@ -145,7 +145,7 @@ deploy/                       the LLM stack (kustomize)
 observability/
   dashboards/                 Grafana dashboards as code (ConfigMaps via kustomize)
   alerts/                     PrometheusRules
-bench/                        load-test scripts (chunked prefill comparison)
+bench/                        scheduler sweeps on the cluster through LiteLLM (sweep.sh chunk|seqs)
 docs/                         architecture diagram, notes, todo
 ```
 
