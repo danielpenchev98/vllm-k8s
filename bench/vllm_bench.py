@@ -114,11 +114,15 @@ async def run(args):
         "label": args.label,
         "rate": args.rate,
         "reasoning": args.reasoning,
+        "max_tokens": args.max_tokens,
+        "seed": args.seed,
         "num_requests": len(results),
         "num_errors": len(errors),
         "ttft_ms_p50": float(np.percentile(ttft, 50)),
+        "ttft_ms_p90": float(np.percentile(ttft, 90)),
         "ttft_ms_p99": float(np.percentile(ttft, 99)),
         "itl_ms_p50": float(np.percentile(itl, 50)),
+        "itl_ms_p90": float(np.percentile(itl, 90)),
         "itl_ms_p99": float(np.percentile(itl, 99)),
         "itl_ms_max": float(itl.max()),
         "e2e_s_p50": float(np.percentile(e2e, 50)),
@@ -134,10 +138,10 @@ async def run(args):
 def summarize(paths):
     rows = [json.loads(pathlib.Path(p).read_text()) for p in paths]
     cols = ["ttft_ms_p50", "ttft_ms_p99", "itl_ms_p50", "itl_ms_p99", "itl_ms_max", "e2e_s_p50", "output_tok_s",
-            "num_errors", "preemptions"]
+            "num_errors", "preemptions", "queue_s_mean"]
     print(f"{'config':<16}" + "".join(f"{c:>14}" for c in cols))
     for r in rows:
-        # preemptions is added by run.sh from vLLM's /metrics; missing (nan) for standalone runs.
+        # preemptions and queue_s_mean are added by run.sh from vLLM's /metrics; missing (nan) for standalone runs.
         print(f"{r['label']:<16}" + "".join(f"{float(r.get(c, 'nan')):>14.1f}" for c in cols))
 
 

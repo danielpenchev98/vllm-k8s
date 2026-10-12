@@ -5,11 +5,14 @@
 #      result as ConfigMap vllm-config-bench-<hash> and points the vllm Deployment at it
 #      (a changed config restarts vLLM; an unchanged one is reused)
 #   2. checks vLLM's startup log shows the experiment's values
-#   3. runs vllm_bench.py through LiteLLM and records vLLM's preemptions during the run
+#   3. runs vllm_bench.py through LiteLLM and records vLLM's preemptions and mean queue time
+#      during the run
 #
 #   bench/run.sh bench/experiments/baseline.yaml base-r4 --rate 4 --seed 4
 #   for r in 1 2 4 8; do bench/run.sh bench/experiments/seqs-16.yaml seqs16-r$r --rate $r --seed $r; done
 #   .venv/bin/python bench/vllm_bench.py --summarize bench/results/*.json
+#
+# sweep.py runs this over a grid of max-num-seqs x max-num-batched-tokens x rates into a CSV.
 #
 # Args after the label go to vllm_bench.py. A reused vLLM still has the previous run's prompts in its
 # prefix cache, so give every run its own --seed, or set FRESH=1 to restart vLLM anyway.
@@ -38,12 +41,14 @@ ROLLOUT_TIMEOUT_S="${ROLLOUT_TIMEOUT_S:-900}"
 log() { printf '\n==> %s\n' "$*"; }
 die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 
-# Sums a counter from vLLM's /metrics (read from inside the pod; the NetworkPolicy keeps us out).
-vllm_metric() {
+# All of vLLM's /metrics, read from inside the pod (the NetworkPolicy keeps us out).
+vllm_metrics() {
   kubectl -n "${NAMESPACE}" exec deploy/vllm -- python3 -c \
-    'import urllib.request; print(urllib.request.urlopen("http://localhost:8000/metrics").read().decode())' \
-    | awk -v m="$1" '$1 ~ "^" m "({|$)" {s += $NF} END {print s + 0}'
+    'import urllib.request; print(urllib.request.urlopen("http://localhost:8000/metrics").read().decode())'
 }
+
+# Sum of one metric's series in a /metrics dump on stdin.
+metric() { awk -v m="$1" '$1 ~ "^" m "({|$)" {s += $NF} END {printf "%f\n", s}'; }
 
 # Waits for the vllm rollout, but gives up early when the new config makes vLLM crash
 # (unknown key, bad value), instead of waiting out the whole timeout.
@@ -109,12 +114,22 @@ mkdir -p "${RESULTS}"
 kubectl -n "${NAMESPACE}" logs deploy/vllm --tail=-1 | grep -E "KV cache size|Maximum concurrency" || true
 
 log "Benchmark ${LABEL}"
-# A reused vLLM keeps counting, so report the difference.
-preempt_before="$(vllm_metric vllm:num_preemptions_total)"
+# A reused vLLM keeps counting, so use the differences over the run.
+before="$(vllm_metrics)"
 "${PYTHON}" vllm_bench.py --label "${LABEL}" --out "${RESULTS}/${LABEL}.json" "$@"
-preempt_after="$(vllm_metric vllm:num_preemptions_total)"
+after="$(vllm_metrics)"
+delta() { awk -v a="$(metric "$1" <<<"${after}")" -v b="$(metric "$1" <<<"${before}")" 'BEGIN {print a - b}'; }
 
-"${PYTHON}" -c 'import json, sys; p = sys.argv[1]; d = json.load(open(p)); d["preemptions"] = float(sys.argv[2]) - float(sys.argv[3]); d["experiment"] = sys.argv[4]; json.dump(d, open(p, "w"), indent=2)' \
-  "${RESULTS}/${LABEL}.json" "${preempt_after}" "${preempt_before}" "$(basename "${EXPERIMENT}")"
-echo "preemptions during run: $(( ${preempt_after%.*} - ${preempt_before%.*} ))"
+"${PYTHON}" - "${RESULTS}/${LABEL}.json" "$(basename "${EXPERIMENT}")" "$(delta vllm:num_preemptions_total)" \
+  "$(delta vllm:request_queue_time_seconds_sum)" "$(delta vllm:request_queue_time_seconds_count)" <<'EOF'
+import json, sys
+path, experiment, preemptions, queued_s, queued = sys.argv[1:]
+d = json.load(open(path))
+d["experiment"] = experiment
+d["preemptions"] = float(preemptions)
+# Mean time a request waited in vLLM's queue before it was scheduled; high means overloaded.
+d["queue_s_mean"] = float(queued_s) / float(queued) if float(queued) else 0.0
+json.dump(d, open(path, "w"), indent=2)
+print(f"preemptions during run: {d['preemptions']:.0f}, mean queue time: {d['queue_s_mean']:.2f} s")
+EOF
 echo "vLLM keeps running ${cm}; back to the committed config: kubectl apply -k deploy/overlays/local-kind"
